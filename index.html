@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบ POS สแกนบาร์โค้ดด้วย Firebase</title>
+    <!-- ไลบรารีสแกนบาร์โค้ด -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <!-- Tailwind CSS สำหรับความสวยงาม -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <style>
+        #reader { width: 100%; max-width: 500px; margin: auto; }
+    </style>
+</head>
+<body class="bg-gray-100 p-4">
+
+    <div class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        <!-- ฝั่งซ้าย: กล้องสแกน และ การจัดการสินค้า -->
+        <div class="bg-white p-6 rounded-lg shadow-md">
+            <h2 class="text-xl font-bold mb-4 text-blue-600">🎥 สแกนบาร์โค้ดผ่านกล้อง</h2>
+            <div id="reader" class="border-2 border-dashed border-gray-300 rounded mb-4"></div>
+            <p id="scan-result" class="text-center text-sm text-gray-500 mt-2">ผลการสแกนล่าสุด: ไม่มี</p>
+
+            <hr class="my-6">
+
+            <h2 class="text-xl font-bold mb-4 text-green-600">💾 บันทึกสินค้าลง Firebase</h2>
+            <form id="product-form" class="space-y-3">
+                <div>
+                    <label class="block text-sm">รหัสบาร์โค้ด (Scan หรือพิมพ์)</label>
+                    <input type="text" id="p-barcode" class="w-full p-2 border rounded" required>
+                </div>
+                <div>
+                    <label class="block text-sm">ชื่อสินค้า</label>
+                    <input type="text" id="p-name" class="w-full p-2 border rounded" required>
+                </div>
+                <div>
+                    <label class="block text-sm">ราคาสินค้า (บาท)</label>
+                    <input type="number" id="p-price" class="w-full p-2 border rounded" required>
+                </div>
+                <button type="submit" class="w-full bg-green-500 text-white p-2 rounded hover:bg-green-600">บันทึกสินค้า</button>
+            </form>
+        </div>
+
+        <!-- ฝั่งขวา: ตะกร้าสินค้าคิดเงิน -->
+        <div class="bg-white p-6 rounded-lg shadow-md flex flex-col justify-between">
+            <div>
+                <h2 class="text-xl font-bold mb-4 text-red-600">🛒 รายการชำระเงิน (POS)</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="border-b">
+                                <th class="pb-2">สินค้า</th>
+                                <th class="pb-2 text-center">จำนวน</th>
+                                <th class="pb-2 text-right">ราคา</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cart-table-body">
+                            <!-- รายการสินค้าจะเพิ่มเข้ามาที่นี่ -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="mt-6 border-t pt-4">
+                <div class="flex justify-between text-2xl font-bold mb-4">
+                    <span>ยอดรวมทั้งสิ้น:</span>
+                    <span class="text-blue-600"><span id="cart-total">0</span> บาท</span>
+                </div>
+                <button onclick="checkout()" class="w-full bg-blue-600 text-white text-xl p-3 rounded-lg font-bold hover:bg-blue-700 shadow-md">
+                    💰 ชำระเงิน
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- นำเข้าโมดูล Firebase SDK (เวอร์ชันล่าสุดที่เสถียร) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // ⚠️ นำค่า config ที่ได้จากหน้าเว็บ Firebase Console มาแทนที่จุดนี้ทั้งหมด
+        const firebaseConfig = {
+  apiKey: "AIzaSyC2-aIGelpGyjYE7aXZhUe7_ivoPMmmrKw",
+  authDomain: "pos1-a4156.firebaseapp.com",
+  projectId: "pos1-a4156",
+  storageBucket: "pos1-a4156.firebasestorage.app",
+  messagingSenderId: "792816247252",
+  appId: "1:792816247252:web:03921a6ada05cc41f97641",
+  measurementId: "G-4H69L5EH7L"
+        };
+
+        // เริ่มการทำงานของ Firebase และ Firestore
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // --- ระบบฐานข้อมูล Firebase: ดึงข้อมูลสินค้า ---
+        async function fetchProduct(barcode) {
+            try {
+                const docRef = doc(db, "products", barcode);
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    return docSnap.data(); // ส่งคืนข้อมูล { name, price }
+                } else {
+                    return null;
+                }
+            } catch (error) {
+                console.error("เกิดข้อผิดพลาดในการดึงข้อมูล:", error);
+                return null;
+            }
+        }
+
+        // --- ระบบฐานข้อมูล Firebase: บันทึกข้อมูลสินค้าใหม่ ---
+        document.getElementById('product-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const barcode = document.getElementById('p-barcode').value.trim();
+            const name = document.getElementById('p-name').value.trim();
+            const price = parseFloat(document.getElementById('p-price').value);
+
+            try {
+                // บันทึกสินค้าลง Firestore (คอลเล็กชัน products โดยใช้ barcode เป็นชื่อเอกสาร ID)
+                await setDoc(doc(db, "products", barcode), {
+                    name: name,
+                    price: price
+                });
+
+                alert(`💾 บันทึกสินค้า "${name}" ลงฐานข้อมูล Firebase เรียบร้อยแล้ว!`);
+                document.getElementById('product-form').reset();
+            } catch (error) {
+                alert("❌ บันทึกไม่สำเร็จ: " + error.message);
+            }
+        });
+
+
+        // --- ระบบตะกร้าสินค้า (POS Cart Logic) ---
+        let cart = [];
+
+        async function addToCart(barcode) {
+            // แสดงสถานะระหว่างดึงข้อมูลสินค้าจริงจาก Firebase
+            document.getElementById('scan-result').innerText = `กำลังดึงข้อมูลบาร์โค้ด: ${barcode}...`;
+            
+            const product = await fetchProduct(barcode);
+
+            if (!product) {
+                document.getElementById('p-barcode').value = barcode;
+                document.getElementById('scan-result').innerText = `สแกนล่าสุด: ไม่พบสินค้าชิ้นนี้`;
+                alert(`⚠️ ไม่พบสินค้ารหัส: ${barcode} ในระบบ Firebase คุณสามารถกรอกชื่อและราคาทางด้านซ้ายเพื่อเพิ่มรายการใหม่ได้เลยครับ`);
+                return;
+            }
+
+            document.getElementById('scan-result').innerText = `สแกนล่าสุด: ${product.name}`;
+
+            const existingItem = cart.find(item => item.barcode === barcode);
+            if (existingItem) {
+                existingItem.quantity += 1;
+            } else {
+                cart.push({
+                    barcode: barcode,
+                    name: product.name,
+                    price: product.price,
+                    quantity: 1
+                });
+            }
+            updateCartUI();
+            playBeep();
+        }
+
+        function updateCartUI() {
+            const tbody = document.getElementById('cart-table-body');
+            tbody.innerHTML = '';
+            let total = 0;
+
+            cart.forEach(item => {
+                const subtotal = item.price * item.quantity;
+                total += subtotal;
+
+                const tr = document.createElement('tr');
+                tr.className = 'border-b text-sm';
+                tr.innerHTML = `
+                    <td class="py-3 font-medium">${item.name}<br><span class="text-xs text-gray-400">${item.barcode}</span></td>
+                    <td class="py-3 text-center font-bold text-gray-700">${item.quantity}</td>
+                    <td class="py-3 text-right font-semibold">${subtotal.toLocaleString()} บาท</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('cart-total').innerText = total.toLocaleString();
+        }
+
+        window.checkout = function() {
+            if (cart.length === 0) {
+                alert("กรุณาสแกนสินค้าเข้าตะกร้าก่อนชำระเงินครับ");
+                return;
+            }
+            alert("💵 ชำระเงินเสร็จสิ้น! ขอบคุณที่ใช้บริการ (ระบบทำการล้างตะกร้าเรียบร้อย)");
+            cart = [];
+            updateCartUI();
+        }
+
+        function playBeep() {
+            const context = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = context.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, context.currentTime); 
+            osc.connect(context.destination);
+            osc.start();
+            osc.stop(context.currentTime + 0.1);
+        }
+
+        // --- ระบบเปิดใช้งานกล้องสแกนบาร์โค้ด ---
+        function onScanSuccess(decodedText, decodedResult) {
+            html5QrcodeScanner.clear(); // สั่งหยุดกล้องชั่วคราวขณะดึงข้อมูลฐานข้อมูล
+            addToCart(decodedText);
+            
+            setTimeout(() => {
+                startScanner();
+            }, 2000); // ดีเลย์เปิดกล้องใหม่ 2 วินาทีเพื่อให้เตรียมสแกนสินค้าชิ้นถัดไป
+        }
+
+        let html5QrcodeScanner;
+        function startScanner() {
+            html5QrcodeScanner = new Html5QrcodeScanner(
+                "reader", 
+                { 
+                    fps: 10, 
+                    qrbox: { width: 280, height: 160 },
+                    rememberLastUsedCamera: true,
+                    aspectRatio: 1.777778
+                }, 
+                false
+            );
+            html5QrcodeScanner.render(onScanSuccess);
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            startScanner();
+        });
+    </script>
+</body>
+</html>
