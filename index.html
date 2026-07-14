@@ -209,33 +209,64 @@
             osc.stop(context.currentTime + 0.1);
         }
 
-        // --- ระบบเปิดใช้งานกล้องสแกนบาร์โค้ด ---
-        function onScanSuccess(decodedText, decodedResult) {
-            html5QrcodeScanner.clear(); // สั่งหยุดกล้องชั่วคราวขณะดึงข้อมูลฐานข้อมูล
-            addToCart(decodedText);
-            
-            setTimeout(() => {
-                startScanner();
-            }, 2000); // ดีเลย์เปิดกล้องใหม่ 2 วินาทีเพื่อให้เตรียมสแกนสินค้าชิ้นถัดไป
-        }
-
+// --- ระบบเปิดใช้งานกล้องสแกนบาร์โค้ด (เวอร์ชันปรับปรุงแก้ไขบั๊กจอดำบนมือถือ) ---
         let html5QrcodeScanner;
-        function startScanner() {
-            html5QrcodeScanner = new Html5QrcodeScanner(
-                "reader", 
-                { 
-                    fps: 10, 
-                    qrbox: { width: 280, height: 160 },
-                    rememberLastUsedCamera: true,
-                    aspectRatio: 1.777778
-                }, 
-                false
-            );
-            html5QrcodeScanner.render(onScanSuccess);
+
+        function onScanSuccess(decodedText, decodedResult) {
+            // ส่งเสียงบี๊บแจ้งเตือนทันทีที่สแกนติด
+            playBeep(); 
+            
+            // สั่งหยุดสแกนชั่วคราวเพื่อป้องกันการเบิ้ลสแกนซ้ำๆ ถี่เกินไป
+            html5QrcodeScanner.clear().then(() => {
+                addToCart(decodedText);
+                
+                // หลังจากทำระบบดึงข้อมูลเสร็จ 1.5 วินาที ค่อยเปิดกล้องใหม่อีกครั้ง
+                setTimeout(() => {
+                    startScanner();
+                }, 1500);
+            }).catch(err => {
+                console.error("Failed to clear scanner:", err);
+            });
         }
 
+        function startScanner() {
+            // สร้างอินสแตนซ์สแกนเนอร์ลงใน <div id="reader">
+            html5QrcodeScanner = new Html5Qrcode("reader");
+            
+            const config = { 
+                fps: 15, // เพิ่มเฟรมเรตให้กล้องลื่นไหลขึ้นในการจับภาพบาร์โค้ด
+                qrbox: function(viewfinderWidth, viewfinderHeight) {
+                    // ปรับขนาดกล่องโฟกัสให้ยาวพอดีกับบาร์โค้ดแท่ง (แปรผันตามหน้าจอมือถือแต่ละรุ่น)
+                    let width = Math.floor(viewfinderWidth * 0.75);
+                    let height = Math.floor(viewfinderHeight * 0.35);
+                    if (width < 250) width = 250;
+                    if (height < 140) height = 140;
+                    return { width: width, height: height };
+                },
+                aspectRatio: 1.777778
+            };
+
+            // บังคับให้ระบบระบุเจาะจงไปที่ "กล้องหลัง (facingMode: environment)" ของมือถือโดยตรง
+            html5QrcodeScanner.start(
+                { facingMode: "environment" }, 
+                config, 
+                onScanSuccess,
+                (errorMessage) => {
+                    // ปิด Log ข้อความ Error ย่อยๆ ระหว่างที่กล้องกำลังพยายามจับโฟกัส เพื่อไม่ให้เครื่องหน่วง
+                }
+            ).catch((err) => {
+                console.error("ไม่สามารถเข้าถึงกล้องหลังได้:", err);
+                
+                // แผนสำรอง (Fallback): ถ้าบังคับกล้องหลังแล้วติดปัญหา ให้เปิดกล้องเท่าที่เบราว์เซอร์จะหาได้ทดแทน
+                html5QrcodeScanner.start({ facingMode: "user" }, config, onScanSuccess)
+                    .catch(e => alert("🚨 ระบบไม่สามารถเปิดกล้องบนมือถือเครื่องนี้ได้ กรุณาตรวจสอบสิทธิ์การอนุญาตกล้องอีกครั้งครับ"));
+            });
+        }
+
+        // เริ่มต้นรันกล้องทันทีเมื่อหน้าเว็บโหลดเสร็จ
         window.addEventListener('DOMContentLoaded', () => {
-            startScanner();
+            // ใส่ดีเลย์สั้นๆ 500ms เพื่อให้เบราว์เซอร์เตรียมสิทธิ์ WebAPI ให้พร้อมก่อนเรียกใช้กล้อง
+            setTimeout(startScanner, 500);
         });
     </script>
 </body>
