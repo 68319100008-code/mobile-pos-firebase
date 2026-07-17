@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mobile POS & Inventory ออนไลน์</title>
-    <!-- Bootstrap 5 -->
+    <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- HTML5-QRCode Scanner -->
     <script src="https://unpkg.com/html5-qrcode"></script>
@@ -70,12 +70,12 @@
 </div>
 
 <!-- หน้าต่างป็อปอัป (Modal) สำหรับโหมดสแกนรับของเข้าสต็อก -->
-<div class="modal fade" id="productModal" data-bs-backdrop="static" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="productModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header bg-warning text-dark">
                 <h5 class="modal-title fw-bold" id="modalTitle">📦 จัดการสต็อกสินค้า</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" onclick="resumeScanner()"></button>
+                <button type="button" class="btn-close" onclick="closeMyModal()" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="productForm">
@@ -103,13 +103,13 @@
     </div>
 </div>
 
-<!-- Bootstrap JS Bundle -->
+<!-- Bootstrap 5 JavaScript Bundle -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
 <!-- Firebase Configuration -->
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-    import { getFirestore, doc, getDoc, updateDoc, setDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+    import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
     // 🔴 วาง Firebase Config ของคุณตรงนี้
     const firebaseConfig = {
@@ -124,10 +124,20 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    let currentMode = 'sell'; // 'sell' หรือ 'stock'
+    let currentMode = 'sell'; 
     let cart = [];
     let isScanning = true; 
-    const productModal = new bootstrap.Modal(document.getElementById('productModal'));
+    let isModalOpen = false;
+
+    // ฟังก์ชันเปิด-ปิด Modal ด้วย JavaScript แบบเสถียร
+    const modalEl = document.getElementById('productModal');
+    const bModal = new bootstrap.Modal(modalEl);
+
+    window.closeMyModal = function() {
+        bModal.hide();
+        isModalOpen = false;
+        resumeScanner();
+    }
 
     // ฟังก์ชันสลับโหมดการทำงาน
     window.switchMode = function(mode) {
@@ -152,33 +162,33 @@
         }
     }
 
-    // ฟังก์ชันการทำตัวหน่วงเวลาสแกนชั่วคราว (Prevent Double Scan)
     function triggerCooldown() {
         isScanning = false;
         document.getElementById('reader').classList.add('scan-cooldown');
-        document.getElementById('scan-status').innerHTML = "⏳ กำลังประมวลผล... ล็อคกล้องชั่วคราว";
+        document.getElementById('scan-status').innerHTML = "⏳ กำลังประมวลผล...";
     }
 
     window.resumeScanner = function() {
+        if (isModalOpen) return; // ถ้าหน้าต่างกรอกข้อมูลยังเปิดอยู่ ไม่ต้องเปิดกล้อง
         setTimeout(() => {
             isScanning = true;
             document.getElementById('reader').classList.remove('scan-cooldown');
             document.getElementById('scan-status').innerHTML = "🟢 ระบบกล้องพร้อมสแกน...";
-        }, 2500); // ดีเลย์ 2.5 วินาทีก่อนให้สแกนชิ้นต่อไปได้
+        }, 2000); 
     }
 
-    // ฟังก์ชันเมื่อสแกนบาร์โค้ดสำเร็จ
+    // ฟังก์ชันหลักเมื่อสแกนบาร์โค้ดเจอ
     async function onScanSuccess(decodedText) {
-        if (!isScanning) return; // ถ้าอยู่ในช่วงดีเลย์หรือกำลังเปิด Modal ให้ข้ามการสแกนไปก่อน
+        if (!isScanning || isModalOpen) return; 
         
-        triggerCooldown(); // ล็อคกล้องทันทีก่อนทำธุรกรรม
+        triggerCooldown(); 
 
         try {
             const docRef = doc(db, "products", decodedText);
             const docSnap = await getDoc(docRef);
 
             if (currentMode === 'sell') {
-                // --- โหมดขายหน้าร้าน ---
+                // --- โหมดขายสินค้า ---
                 if (docSnap.exists()) {
                     const product = docSnap.data();
                     if (product.stock > 0) {
@@ -187,15 +197,16 @@
                         alert(`❌ สินค้า '${product.name}' หมดสต็อก`);
                     }
                 } else {
-                    alert(`❌ ไม่พบรหัสสินค้า [${decodedText}] กรุณาไปเพิ่มสินค้าในโหมดรับของก่อน`);
+                    alert(`❌ ไม่พบรหัสสินค้า [${decodedText}] ในระบบ คาดว่าเป็นสินค้าใหม่`);
                 }
-                resumeScanner(); // ขายเสร็จ ปลดล็อคกล้องต่อ
+                resumeScanner();
             } else {
-                // --- โหมดสแกนรับของเข้าสต็อก ---
+                // --- โหมดรับของเข้าสต็อก ---
+                isModalOpen = true;
                 document.getElementById('form-barcode').value = decodedText;
                 
                 if (docSnap.exists()) {
-                    // 1. เคสมีสินค้าอยู่แล้วในฐานข้อมูล -> ล็อคฟิลด์อื่น แก้ไขได้เฉพาะจำนวน
+                    // เคส 1: มีของเดิมอยู่แล้ว ให้กรอกเพิ่มจำนวนอย่างเดียว
                     const product = docSnap.data();
                     document.getElementById('modalTitle').innerText = "📦 รับสินค้าเดิมเข้าสต็อก";
                     document.getElementById('form-name').value = product.name;
@@ -205,9 +216,9 @@
                     
                     document.getElementById('label-stock').innerText = "จำนวนที่รับเพิ่มเข้าคลัง";
                     document.getElementById('form-stock').value = "";
-                    document.getElementById('stock-help').innerText = `*จำนวนปัจจุบันในระบบ: ${product.stock} ชิ้น`;
+                    document.getElementById('stock-help').innerText = `*จำนวนปัจจุบันในคลัง: ${product.stock} ชิ้น`;
                 } else {
-                    // 2. เคสสินค้าใหม่แกะกล่อง -> เปิดให้กรอกข้อมูลทุกช่อง
+                    // เคส 2: สินค้าใหม่แกะกล่อง เปิดให้กรอกข้อมูลเพื่อเพิ่มเข้าฐานข้อมูลใหม่
                     document.getElementById('modalTitle').innerText = "✨ เพิ่มสินค้าใหม่เข้าสู่ระบบ";
                     document.getElementById('form-name').value = "";
                     document.getElementById('form-name').readOnly = false;
@@ -216,10 +227,10 @@
                     
                     document.getElementById('label-stock').innerText = "จำนวนสต็อกเริ่มต้น";
                     document.getElementById('form-stock').value = "";
-                    document.getElementById('stock-help').innerText = "*สินค้านี้ยังไม่มีในระบบ";
+                    document.getElementById('stock-help').innerText = "*สินค้านี้ยังไม่มีในคลังระบบ จะทำการเพิ่มใหม่";
                 }
-                productModal.show();
-                // โฟกัสไปที่ช่องกรอกจำนวนอัตโนมัติเพื่อให้ผู้ใช้พิมพ์ได้ทันที
+                
+                bModal.show();
                 setTimeout(() => document.getElementById('form-stock').focus(), 500);
             }
         } catch (error) {
@@ -228,7 +239,7 @@
         }
     }
 
-    // บันทึกฟอร์มรับของเข้าสต็อก (ทั้งเพิ่มใหม่และอัปเดตตัวเก่า)
+    // แก้ไขบั๊กส่วนบันทึกข้อมูลฟอร์ม: รองรับการสร้างเอกสารใหม่ (สินค้าใหม่) 100%
     document.getElementById('productForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const barcode = document.getElementById('form-barcode').value;
@@ -241,28 +252,36 @@
             const docSnap = await getDoc(productRef);
 
             let finalStock = inputStock;
+            
             if (docSnap.exists()) {
-                // ถ้ามีอยู่แล้ว ให้นำจำนวนเดิมมาบวกเพิ่มด้วยจำนวนใหม่ที่กรอกเข้า
+                // สินค้าเดิม: เอาค่าเก่าใน Firebase มาบวกเพิ่ม
                 finalStock = docSnap.data().stock + inputStock;
             }
 
-            // บันทึกลงคลาวด์ Firebase
+            // ใช้คำสั่ง setDoc ในการสร้างตัวหนาข้อมูลใหม่ หรืออัปเดตทับจุดเดิม
             await setDoc(productRef, {
                 name: name,
                 price: price,
                 stock: finalStock
-            });
+            }, { merge: true }); // เปิดโหมด merge ป้องกันการเขียนทับพลาดไฟล์
 
-            alert('💾 อัปเดตข้อมูลคลังสินค้าเรียบร้อยแล้ว!');
-            productModal.hide();
-            resumeScanner(); // ปลดล็อคกล้องสำหรับชิ้นต่อไป
+            alert('💾 บันทึกข้อมูลคลังสินค้าเรียบร้อยแล้ว!');
+            
+            // เคลียร์ค่าหน้าต่างและสั่งปิด
+            document.getElementById('productForm').reset();
+            bModal.hide();
+            isModalOpen = false;
+            
+            resumeScanner(); 
         } catch (error) {
-            alert('เกิดข้อผิดพลาด: ' + error.message);
+            alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล: ' + error.message);
+            bModal.hide();
+            isModalOpen = false;
             resumeScanner();
         }
     });
 
-    // ฟังก์ชันเสริมในฝั่งขายของหน้าร้าน
+    // ส่วนประมวลผลตะกร้าสินค้าฝั่งขาย
     function addProductToCart(barcode, name, price, maxStock) {
         let existingItem = cart.find(item => item.barcode === barcode);
         if (existingItem) {
@@ -309,10 +328,10 @@
         }
     }
 
-    // เปิดใช้งานระบบสแกน
+    // เริ่มระบบกล้องสแกน
     const html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 15, qrbox: { width: 260, height: 160 } });
     html5QrcodeScanner.render(onScanSuccess);
-    switchMode('sell'); // ตั้งค่าเริ่มต้นที่โหมดขาย
+    switchMode('sell');
 </script>
 
 </body>
