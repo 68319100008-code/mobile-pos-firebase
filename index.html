@@ -154,19 +154,20 @@
 
     // 🔴 วาง Firebase Config ของคุณตรงนี้แทนค่าเดิม
     const firebaseConfig = {
-        apiKey: "YOUR_API_KEY",
-        authDomain: "YOUR_AUTH_DOMAIN",
-        projectId: "YOUR_PROJECT_ID",
-        storageBucket: "YOUR_STORAGE_BUCKET",
-        messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-        appId: "YOUR_APP_ID"
+            apiKey: "AIzaSyC2-aIGelpGyjYE7aXZhUe7_ivoPMmmrKw",
+            authDomain: "pos1-a4156.firebaseapp.com",
+            projectId: "pos1-a4156",
+            storageBucket: "pos1-a4156.firebasestorage.app",
+            messagingSenderId: "792816247252",
+            appId: "1:792816247252:web:03921a6ada05cc41f97641",
+            measurementId: "G-4H69L5EH7L"
     };
 
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
     // 🔴 ตั้งค่าหมายเลขพร้อมเพย์ของร้านค้า (เบอร์โทรศัพท์มือถือ หรือเลขบัตรประชาชน)
-    const PROMPTPAY_ID = "0891234567"; 
+    const PROMPTPAY_ID = "0646754628"; 
 
     let currentMode = 'sell'; 
     let cart = [];
