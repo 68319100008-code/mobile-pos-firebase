@@ -364,20 +364,21 @@
     }
 
     // 1. ปุ่มชำระเงินหน้าร้าน: เจน QR Code ทันทีตามยอดจริง
-    window.processCheckout = function() {
-        if (cart.length === 0) return alert('กรุณาสแกนสินค้าลงตะกร้าก่อนชำระเงิน');
-        
-        currentTotalPay = parseFloat(document.getElementById('total-price').innerText);
-        document.getElementById('pay-total-text').innerText = currentTotalPay.toFixed(2);
-        
-        // เจนภาพ QR Code ไดนามิกแบบผูกยอดเงินผ่าน PromptPay API
-        const qrUrl = `https://promptpay.io/${PROMPTPAY_ID}/${currentTotalPay.toFixed(2)}.png`;
-        document.getElementById('promptpay-qr').src = qrUrl;
-        
-        isScanning = false; 
-        bPaymentModal.show();
-    }
-
+window.processCheckout = function() {
+    if (cart.length === 0) return alert('กรุณาสแกนสินค้าลงตะกร้าก่อนชำระเงิน');
+    
+    currentTotalPay = parseFloat(document.getElementById('total-price').innerText);
+    document.getElementById('pay-total-text').innerText = currentTotalPay.toFixed(2);
+    
+    // 🔥 บรรทัดนี้แหละครับคือตัวเจน QR Code ผูกยอดเงินผ่าน PromptPay API แบบไดนามิก
+    const qrUrl = `https://promptpay.io/${PROMPTPAY_ID}/${currentTotalPay.toFixed(2)}.png`;
+    
+    // นำลิงก์รูปภาพที่เจนได้ ไปแสดงในหน้าต่าง Pop-up (Modal) 
+    document.getElementById('promptpay-qr').src = qrUrl;
+    
+    isScanning = false; 
+    bPaymentModal.show();
+}
     // 2. เมื่อร้านค้ากดปุ่ม "ยืนยันลูกค้าโอนแล้ว" ตรงจุดสแกน -> ระบบตรวจสอบสลิปหลังบ้านอัตโนมัติ
     window.triggerAutoVerification = async function() {
         const btn = document.getElementById('btn-verify-trigger');
